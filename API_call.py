@@ -47,27 +47,45 @@ class exchangeAPI(object):
     def GET(self, url, params=''):
         #GET is for public functions.
         #params should be in json.
+        #url must include '/'.
         conn = http.client.HTTPSConnection(self.HTTPSConnection)
         conn.request("GET", url+"/"+params)
         response = conn.getresponse()
-        encoding = response.headers.get_content_charset()
-        print(type(response))
-        data = json.load(response.read().decode(encoding))
+        print(response.status, response.reason)
+        data = json.loads(response.read().decode('utf-8'))
         conn.close()
         return data
+
+
         
 class BTCe(exchangeAPI):
     #BTCe subclass of exchangeAPI where BTC-e specific functions are stored. One for each account.
     def fee(self):
         #returns fee in %.
-        return self.GET('/api/2/btc_usd/fee')
-        
-
+        return self.GET('/api/2/btc_usd/fee','{}')
+    def ticker(self):
+        #needs formatting
+        return self.GET('/api/2/btc_usd/ticker','{}')
+    def depth(self):
+        return self.GET('/api/2/btc_usd/depth','{}')
+    def trades(self):
+        return self.GET('/api/2/btc_usd/trades','{}')
         
 class Bitstamp(exchangeAPI):
     def fee(self):
         pass
+    def ticker(self):
+        return self.GET('/api/ticker')
+    def depth(self):
+        #This was a lot longer than I thought. Need to parse.
+        return self.GET('/api/order_book')
+    def trades(self,timedelta=3600):
+        #Returns transactions for the last 'timedelta' seconds.
+        return self.GET('/api/transactions')
 
 
-account = BTCe('hello', 'secret', "btc-e.com")
-print(json.load(account.fee()))
+#account1 = BTCe('hello', 'secret', "btc-e.com")
+account2 = Bitstamp('hello', 'secret', "www.bitstamp.net")
+#print(account1.depth())
+#print(account2.ticker())
+print(account2.trades())
