@@ -21,11 +21,12 @@ depth
 
 
 class exchangeAPI(object):
-    def __init__(self, api_key, api_secret):
+    def __init__(self, api_key, api_secret, client_id = ''):
         # API key data
         self.api_key = api_key
         self.api_secret = api_secret
         self.prev_nonce = 0
+        self.client_id = client_id
         # main url for exchanges. e.g.) "btc-e.com"
 
     def nonce(self):
@@ -79,8 +80,7 @@ class BTCe(exchangeAPI):
         conn = requests.post(url, data=params, headers=headers)
         return conn.text
         
-    
-    def balance(self):
+    def Balance(self):
         return self.POST('getInfo', {})
     
     def TransHistory(self, tfrom='', tcount='', tfrom_id='', tend_id='', torder='', tsince='', tend=''):
@@ -113,12 +113,18 @@ class BTCe(exchangeAPI):
     def Trade(self, tpair, ttype, trate, tamount):
         params = {
         "pair"	    : tpair,
-        "type"	    : ttype,
+        "type"	    : ttype, #'buy' or 'sell'
         "rate"	    : trate,
         "amount"    : tamount}
         return self.POST('Trade', params)
 
-    def CancelOrder(self, torder_id):
+    def Sell(self, rate, amount, pair="btc_usd"):
+        return self.Trade(pair, 'sell', rate, amount)
+
+    def Buy(self, rate, amount, pair="btc_usd"):
+        return self.Trade(pair, 'buy', rate, amount)
+
+    def Cancel(self, torder_id):
         params = { "order_id" : torder_id }
         return self.POST('CancelOrder', params)
         
@@ -138,62 +144,65 @@ class Bitstamp(exchangeAPI):
         return self.GET('https://www.bitstamp.net/api/transactions')
 
     #private functions from hereon
-    def POST(self,method,params={},url='https://www.bitstamp.net/api/'):
+    def POST(self,url='https://www.bitstamp.net/api/',params={}):
         #special POST function for Bitstamp
-        params['method'] = method
-        params['nonce'] = self.nonce()
-        params = urllib.urlencode(params) #necessary
-        headers = {"Content-type" : "application/x-www-form-urlencoded",
-                   "Key" : self.api_key,
-                   "Sign" : hmac.new(self.api_secret, params, digestmod=hashlib.sha512).hexdigest()}
-        conn = requests.post(url, data=params, headers=headers)
+        #params = urllib.urlencode(params) #necessary?
+        nonce = self.nonce()
+        msg = str(nonce) + self.client_id + self.api_key
+        signature = hmac.new(self.api_secret,
+                            msg=msg,
+                            digestmod=hashlib.sha256).hexdigest().upper()
+        params.update({'key': self.api_key, 'signature': signature, 'nonce': nonce})           
+        conn = requests.post(url, params)
         return conn.text
     
-    def balance(self):
-        return self.POST('getInfo', {}, 'https://www.bitstamp.net/api/balance/')
+    def Balance(self):
+        return self.POST('https://www.bitstamp.net/api/balance/')
     
-    def TransHistory(self, tfrom, tcount, tfrom_id, tend_id, torder, tsince, tend):
+    def TransHistory(self, offset=0, limit=100, descending=True):
+        """
+        Bitstamp TransHistory doubles as TradeHistory
+
+            {'usd': u'-39.25',
+             'datetime': u'2013-03-26 18:49:13',
+             'fee': u'0.20', u'btc': u'0.50000000',
+             'type' : transaction type (0 - deposit; 1 - withdrawal; 2 - market trade)
+             'id': 213642}
+        """
+        params = {"offset"    : offset, "limit": limit, "descending": descending}
+        return self.POST('https://www.bitstamp.net/api/user_transactions/', params)
+
+    def TradeHistory(self, offset=0, limit=100, descending=True):
+        params = {"offset"    : offset, "limit": limit, "descending": descending}
+        return self.POST('https://www.bitstamp.net/api/user_transactions/', params)
+
+    def ActiveOrders(self):
+        params = {}
+        return self.POST('https://www.bitstamp.net/api/open_orders/', params)
+
+    def Sell(self, rate, amount):
         params = {
-        "from"	    : tfrom,
-        "count"	    : tcount,
-        "from_id"   : tfrom_id,
-        "end_id"    : tend_id,
-        "order"	    : torder,
-        "since"	    : tsince,
-        "end"	    : tend}
-        return self.POST('https://www.bitstamp.net/api/user_transactions/', params, '/tapi')
+        "amount"    : amount,
+        "rate"	    : rate}
+        return self.POST('https://www.bitstamp.net/api/sell/', params)
 
-    def TradeHistory(self, tfrom, tcount, tfrom_id, tend_id, torder, tsince, tend, tpair):
+    def Buy(self, rate, amount):
         params = {
-        "from"	    : tfrom,
-        "count"	    : tcount,
-        "from_id"   : tfrom_id,
-        "end_id"    : tend_id,
-        "order"	    : torder,
-        "since"	    : tsince,
-        "end"	    : tend,
-        "pair"	    : tpair}
-        return self.POST('TradeHistory', params, '/tapi')
+        "amount"    : amount,
+        "rate"	    : rate}
+        return self.POST('https://www.bitstamp.net/api/sell/', params)
 
-    def ActiveOrders(self, tpair):
-        params = { "pair" : tpair }
-        return self.POST('https://www.bitstamp.net/api/open_orders/', params, '/tapi')
+    def Cancel(self, order_id):
+        params = { "id" : order_id }
+        return self.POST('https://www.bitstamp.net/api/cancel_order/', params)
 
-    def Trade(self, tpair, ttype, trate, tamount):
-        params = {
-        "pair"	    : tpair, #'btc_usd', 'ltc_btc', 'ltc_usd', and so on
-        "type"	    : ttype, #'buy' or 'sell'
-        "rate"	    : trate, 
-        "amount"    : tamount}
-        return self.POST('Trade', params, '/tapi')
-
-    def CancelOrder(self, torder_id):
-        params = { "order_id" : torder_id }
-        return self.POST('https://www.bitstamp.net/api/cancel_order/', params, '/tapi')
+"""
+Bter, and Vircurex
+"""
 
 
-account1 = BTCe('RJIBB911-VMH9M608-KDLYV5T1-7D6NBBS1-QTTXAYR1', '129515e00cf234be7e12b0e020d574536e24550e2dfce45d3d4c5b2d2c82560b')
-#account2 = Bitstamp('JnU7gg9QQLgZUmQ33pwhue0UXios40Lz', 'hhKNr4cD30yJ4iZ5vxSzhKrZ0XydS9vS')
-print(account1.balance())
-print(account1.TradeHistory())
-#print(account2.balance())
+#account1 = BTCe('RJIBB911-VMH9M608-KDLYV5T1-7D6NBBS1-QTTXAYR1', '129515e00cf234be7e12b0e020d574536e24550e2dfce45d3d4c5b2d2c82560b')
+account2 = Bitstamp('J1kGBNpC5559mQLs4OkNYWZ1LIfpvNMx', 'sovyntDL2pRPMxyRI5wD3aVQnL1wACi3', '680934')
+#print(account1.depth())
+#print(account1.TradeHistory())
+print(account2.depth())
