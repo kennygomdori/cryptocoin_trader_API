@@ -202,8 +202,3 @@ Bitfinex and Kraken are good options with withdrawal API.
 """
 
 
-#account1 = BTCe('key', 'secret')
-#account2 = Bitstamp('key', 'secret', 'client_id')
-#print(account1.depth())
-#print(account1.TradeHistory())
-print(account2.depth())
